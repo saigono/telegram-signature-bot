@@ -1,7 +1,6 @@
 import logging
-from typing import Optional
-
-from telegram import Update
+from typing import Optional, List
+from telegram import Update, MessageEntity, TextLink
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
 
@@ -37,7 +36,7 @@ class SignatureBot:
         await update.message.reply_text(
             'Привет! Я бот для автоматического добавления подписи к сообщениям.\n\n'
             'Доступные команды:\n'
-            '/set_signature <подпись> - установить подпись\n'
+            '/set_signature <подпись> - установить подпись (поддерживается форматирование)\n'
             '/remove_signature - удалить подпись\n'
             '/show_signature - показать текущую подпись\n'
             '/set_channel @channel_name - установить канал для публикации\n'
@@ -45,19 +44,149 @@ class SignatureBot:
             '/show_channel - показать текущий канал'
         )
 
+    def extract_signature_entities(self, message: str, original_entities: List[MessageEntity], 
+                                 start_index: int) -> List[MessageEntity]:
+        """Извлекает entities для подписи из сообщения"""
+        signature_entities = []
+        for entity in original_entities:
+            # Проверяем, относится ли entity к тексту подписи
+            if entity.offset >= start_index:
+                # Создаем новый entity с обновленным смещением
+                new_offset = entity.offset - start_index
+                if entity.type == 'text_link':
+                    new_entity = TextLink(
+                        url=entity.url,
+                        offset=new_offset,
+                        length=entity.length
+                    )
+                else:
+                    new_entity = MessageEntity(
+                        type=entity.type,
+                        offset=new_offset,
+                        length=entity.length
+                    )
+                signature_entities.append(new_entity)
+        return signature_entities
+
     async def set_signature(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Установка подписи пользователя"""
         if not context.args:
             await update.message.reply_text(
                 'Пожалуйста, укажите подпись после команды.\n'
-                'Пример: /set_signature С уважением, Иван'
+                'Пример: /set_signature С уважением, Иван\n\n'
+                'Поддерживается форматирование текста (выделение жирным, курсивом, ссылки и т.д.)'
             )
             return
 
-        signature = ' '.join(context.args)
+        # Получаем текст подписи и его форматирование
+        full_message = update.message.text
+        command_end = full_message.find(' ')
+        if command_end == -1:
+            signature = ''
+            signature_entities = []
+        else:
+            signature = full_message[command_end + 1:]
+            signature_entities = self.extract_signature_entities(
+                full_message, 
+                update.message.entities or [], 
+                command_end + 1
+            )
+
         user_id = update.effective_user.id
-        self.db.set_signature(user_id, signature)
-        await update.message.reply_text(f'Подпись установлена:\n{signature}')
+        self.db.set_signature(user_id, signature, signature_entities)
+        
+        # Показываем сохраненную подпись с форматированием
+        await update.message.reply_text(
+            f'Подпись установлена:\n{signature}',
+            entities=signature_entities
+        )
+
+    async def show_signature(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Показ текущей подписи пользователя"""
+        user_id = update.effective_user.id
+        signature, entities = self.db.get_signature(user_id)
+        
+        if signature:
+            # Преобразуем сохраненные entities обратно в объекты MessageEntity
+            telegram_entities = []
+            if entities:
+                for e in entities:
+                    if e['type'] == 'text_link':
+                        entity = TextLink(
+                            url=e['url'],
+                            offset=e['offset'],
+                            length=e['length']
+                        )
+                    else:
+                        entity = MessageEntity(
+                            type=e['type'],
+                            offset=e['offset'],
+                            length=e['length']
+                        )
+                    telegram_entities.append(entity)
+            
+            await update.message.reply_text(
+                f'Ваша текущая подпись:\n{signature}',
+                entities=telegram_entities
+            )
+        else:
+            await update.message.reply_text('У вас нет установленной подписи.')
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обработка входящих сообщений"""
+        user_id = update.effective_user.id
+        signature, signature_entities = self.db.get_signature(user_id)
+        channel = self.db.get_channel(user_id)
+        
+        if signature:
+            # Копируем оригинальное сообщение и его форматирование
+            original_message = update.message.text or ""
+            original_entities = list(update.message.entities or [])
+            
+            # Добавляем подпись с переносом строк
+            message_with_signature = f"{original_message}\n\n{signature}"
+            
+            # Объединяем entities из сообщения и подписи
+            combined_entities = list(original_entities)
+            if signature_entities:
+                # Преобразуем сохраненные entities подписи
+                for e in signature_entities:
+                    new_offset = e['offset'] + len(original_message) + 2
+                    if e['type'] == 'text_link':
+                        entity = TextLink(
+                            url=e['url'],
+                            offset=new_offset,
+                            length=e['length']
+                        )
+                    else:
+                        entity = MessageEntity(
+                            type=e['type'],
+                            offset=new_offset,
+                            length=e['length']
+                        )
+                    combined_entities.append(entity)
+            
+            # Отправляем сообщение пользователю
+            await update.message.reply_text(
+                message_with_signature,
+                entities=combined_entities
+            )
+            
+            # Отправляем в канал, если он установлен
+            if channel:
+                try:
+                    await context.bot.send_message(
+                        channel,
+                        message_with_signature,
+                        entities=combined_entities
+                    )
+                except TelegramError as e:
+                    logger.error(f"Error sending message to channel {channel}: {str(e)}")
+                    await update.message.reply_text(
+                        f'Ошибка при отправке в канал {channel}. '
+                        f'Проверьте права бота и существование канала.\n'
+                        f'Ошибка: {str(e)}'
+                    )
 
     async def remove_signature(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Удаление подписи пользователя"""
@@ -66,15 +195,6 @@ class SignatureBot:
         if signature:
             self.db.remove_signature(user_id)
             await update.message.reply_text('Подпись удалена.')
-        else:
-            await update.message.reply_text('У вас нет установленной подписи.')
-
-    async def show_signature(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Показ текущей подписи пользователя"""
-        user_id = update.effective_user.id
-        signature = self.db.get_signature(user_id)
-        if signature:
-            await update.message.reply_text(f'Ваша текущая подпись:\n{signature}')
         else:
             await update.message.reply_text('У вас нет установленной подписи.')
 
@@ -125,30 +245,6 @@ class SignatureBot:
             await update.message.reply_text(f'Ваш текущий канал: {channel}')
         else:
             await update.message.reply_text('У вас нет установленного канала.')
-
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Обработка входящих сообщений"""
-        user_id = update.effective_user.id
-        signature = self.db.get_signature(user_id)
-        channel = self.db.get_channel(user_id)
-        
-        if signature:
-            message_with_signature = f"{update.message.text}\n\n{signature}"
-            
-            # Отправляем сообщение в ответ пользователю
-            await update.message.reply_text(message_with_signature)
-            
-            # Если установлен канал, отправляем сообщение в канал
-            if channel:
-                try:
-                    await context.bot.send_message(channel, message_with_signature)
-                except TelegramError as e:
-                    logger.error(f"Error sending message to channel {channel}: {str(e)}")
-                    await update.message.reply_text(
-                        f'Ошибка при отправке в канал {channel}. '
-                        f'Проверьте права бота и существование канала.\n'
-                        f'Ошибка: {str(e)}'
-                    )
 
     def run(self) -> None:
         """Запуск бота"""
