@@ -128,6 +128,6 @@ MIT License
 
 1. Сделайте форк репозитория
 2. Создайте новую ветку (`git checkout -b feature/improvement`)
-3. Внесите изменения и сделайте коммит (`git commit -am 'Добавить функционал'`)
+3. Внесите изменения и сделайте коммит (`git commit -am 'Новая фича'`)
 4. Отправьте изменения в ваш форк (`git push origin feature/improvement`)
 5. Создайте Pull Request
