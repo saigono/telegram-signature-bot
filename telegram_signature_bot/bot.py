@@ -1,6 +1,6 @@
 import logging
 from typing import Optional, List
-from telegram import Update, MessageEntity, TextLink
+from telegram import Update, MessageEntity
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
 
@@ -53,18 +53,14 @@ class SignatureBot:
             if entity.offset >= start_index:
                 # Создаем новый entity с обновленным смещением
                 new_offset = entity.offset - start_index
-                if entity.type == 'text_link':
-                    new_entity = TextLink(
-                        url=entity.url,
-                        offset=new_offset,
-                        length=entity.length
-                    )
-                else:
-                    new_entity = MessageEntity(
-                        type=entity.type,
-                        offset=new_offset,
-                        length=entity.length
-                    )
+
+                # Для ссылок просто используем MessageEntity с типом TEXT_LINK
+                new_entity = MessageEntity(
+                    type=entity.type,
+                    offset=new_offset,
+                    length=entity.length,
+                    url=entity.url if entity.type == MessageEntity.TEXT_LINK else None
+                )
                 signature_entities.append(new_entity)
         return signature_entities
 
@@ -96,37 +92,38 @@ class SignatureBot:
         self.db.set_signature(user_id, signature, signature_entities)
         
         # Показываем сохраненную подпись с форматированием
+        message_prefix = 'Подпись установлена:\n'
         await update.message.reply_text(
-            f'Подпись установлена:\n{signature}',
-            entities=signature_entities
+            f'{message_prefix}{signature}',
+            entities=[MessageEntity(
+                        type=e.type,
+                        offset=e.offset + len(message_prefix),
+                        length=e.length,
+                        url=e.url if e.type == MessageEntity.TEXT_LINK else None
+                    ) for e in signature_entities]
         )
 
     async def show_signature(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Показ текущей подписи пользователя"""
         user_id = update.effective_user.id
         signature, entities = self.db.get_signature(user_id)
-        
+        message_prefix = 'Ваша текущая подпись:\n'
+
         if signature:
             # Преобразуем сохраненные entities обратно в объекты MessageEntity
             telegram_entities = []
             if entities:
                 for e in entities:
-                    if e['type'] == 'text_link':
-                        entity = TextLink(
-                            url=e['url'],
-                            offset=e['offset'],
-                            length=e['length']
-                        )
-                    else:
-                        entity = MessageEntity(
-                            type=e['type'],
-                            offset=e['offset'],
-                            length=e['length']
-                        )
+                    entity = MessageEntity(
+                        type=e['type'],
+                        offset=e['offset'] + len(message_prefix),
+                        length=e['length'],
+                        url=e.get('url')
+                    )
                     telegram_entities.append(entity)
             
             await update.message.reply_text(
-                f'Ваша текущая подпись:\n{signature}',
+                f'{message_prefix}{signature}',
                 entities=telegram_entities
             )
         else:
@@ -152,18 +149,12 @@ class SignatureBot:
                 # Преобразуем сохраненные entities подписи
                 for e in signature_entities:
                     new_offset = e['offset'] + len(original_message) + 2
-                    if e['type'] == 'text_link':
-                        entity = TextLink(
-                            url=e['url'],
-                            offset=new_offset,
-                            length=e['length']
-                        )
-                    else:
-                        entity = MessageEntity(
-                            type=e['type'],
-                            offset=new_offset,
-                            length=e['length']
-                        )
+                    entity = MessageEntity(
+                        type=e['type'],
+                        offset=new_offset,
+                        length=e['length'],
+                        url=e.get('url')
+                    )
                     combined_entities.append(entity)
             
             # Отправляем сообщение пользователю
