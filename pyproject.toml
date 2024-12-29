@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "telegram-signature-bot"
+version = "0.1.0"
+description = "Telegram bot for automatic signature management and channel posting"
+authors = ["Danil Ineev <danil@ineev.ru>"]
+readme = "README.md"
+packages = [{include = "telegram_signature_bot"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+python-telegram-bot = "^20.8"
+aiosqlite = "^0.19.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.23.0"
+black = "^23.7.0"
+isort = "^5.12.0"
+flake8 = "^6.1.0"
+mypy = "^1.4.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+start-bot = "telegram_signature_bot.main:main"
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "asyncio: mark test as async",
+]
