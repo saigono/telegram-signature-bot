@@ -1,0 +1,50 @@
+name: Deploy Bot
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install Poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 -
+        
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.create false
+        
+    - name: Deploy to server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          # Создаем директории если их нет
+          mkdir -p ~/telegram-signature-bot
+          mkdir -p ~/logs/telegram-bot
+                    
+          # Переходим в директорию проекта
+          cd ~/telegram-signature-bot
+          
+          # Получаем последние изменения
+          git pull origin master || git clone https://github.com/saigono/telegram-signature-bot.git .
+          
+          # Устанавливаем зависимости через poetry
+          # TODO: установить если нет
+          poetry install --no-dev
+          
+          # Перезапускаем supervisor
+          # TODO: внести конфиг в репу
+          sudo supervisorctl restart signature-bot
