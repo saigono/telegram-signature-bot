@@ -32,15 +32,19 @@ poetry install
 
 1. Создайте нового бота через [@BotFather](https://t.me/botfather) и получите токен
 
-2. Установите токен одним из способов:
-   - Через переменную окружения:
-     ```bash
-     export TELEGRAM_BOT_TOKEN='your_token_here'
-     ```
-   - Или передайте токен при запуске:
-     ```bash
-     poetry run start-bot 'your_token_here'
-     ```
+2. Создайте файл .env в корневой директории проекта:
+
+```bash
+cp .env.example .env
+```
+
+3. Отредактируйте .env файл, добавив следующие переменные:
+
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+ENVIRONMENT=development  # или production
+LOG_LEVEL=INFO
+```
 
 ## Использование
 
@@ -82,6 +86,7 @@ CEO, Example Company
 
 ```
 telegram-signature-bot/
+├── .env
 ├── pyproject.toml
 ├── README.md
 ├── telegram_signature_bot/

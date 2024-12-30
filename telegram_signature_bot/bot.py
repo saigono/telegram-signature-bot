@@ -7,19 +7,13 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from .database import Database
 
-# Включаем логирование
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-
-logger = logging.getLogger(__name__)
-
 
 class SignatureBot:
     def __init__(self, token: str, db_name: str = "signatures.db"):
         self.application = Application.builder().token(token).build()
         self.db = Database(db_name)
         self.setup_handlers()
+        self.logger = logging.getLogger(__name__)
 
     def setup_handlers(self) -> None:
         """Настройка обработчиков команд"""
@@ -177,7 +171,7 @@ class SignatureBot:
                         channel, message_with_signature, entities=combined_entities
                     )
                 except TelegramError as e:
-                    logger.error(f"Error sending message to channel {channel}: {str(e)}")
+                    self.logger.error(f"Error sending message to channel {channel}: {str(e)}")
                     await update.message.reply_text(
                         f"Ошибка при отправке в канал {channel}. "
                         f"Проверьте права бота и существование канала.\n"
@@ -277,7 +271,7 @@ class SignatureBot:
                 error_msg = f"Ошибка при отправке медиафайла: {str(e)}"
                 if channel:
                     error_msg += f"\nПроверьте права бота в канале {channel}"
-                logger.error(error_msg)
+                self.logger.error(error_msg)
                 await update.message.reply_text(error_msg)
 
     async def remove_signature(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -309,7 +303,7 @@ class SignatureBot:
             self.db.set_channel(user_id, channel_id)
             await update.message.reply_text(f"Канал {channel_id} успешно установлен.")
         except TelegramError as e:
-            logger.error(f"Error setting channel for user {user_id}: {str(e)}")
+            self.logger.error(f"Error setting channel for user {user_id}: {str(e)}")
             await update.message.reply_text(
                 f"Ошибка при установке канала. Убедитесь, что:\n"
                 f"1. Канал существует\n"
