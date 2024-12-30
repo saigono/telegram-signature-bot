@@ -28,9 +28,8 @@ class Database:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS channels (
-                    user_id INTEGER,
-                    channel_id TEXT NOT NULL,
-                    PRIMARY KEY (user_id, channel_id)
+                    user_id INTEGER PRIMARY KEY,
+                    channel_id TEXT NOT NULL
                 )
             """
             )
