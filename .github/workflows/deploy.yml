@@ -42,7 +42,7 @@ jobs:
           
           # Устанавливаем зависимости через poetry
           # TODO: установить если нет
-          ~/.local/bin/poetry install --no-dev
+          ~/.local/bin/poetry install --only main
           
           # Перезапускаем supervisor
           # TODO: внести конфиг в репу
