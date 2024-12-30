@@ -46,4 +46,4 @@ jobs:
           
           # Перезапускаем supervisor
           # TODO: внести конфиг в репу
-          sudo supervisorctl restart signature-bot
+          supervisorctl restart signature-bot
