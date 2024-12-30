@@ -10,6 +10,7 @@ packages = [{include = "telegram_signature_bot"}]
 python = "^3.9"
 python-telegram-bot = "^20.8"
 aiosqlite = "^0.19.0"
+python-dotenv = "^1.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

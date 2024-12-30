@@ -1,33 +1,53 @@
 import os
 import sys
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
 from .bot import SignatureBot
 
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 
-logger = logging.getLogger(__name__)
+def load_environment():
+    """Загрузка переменных окружения"""
+    # Загружаем .env файл
+    env_path = Path(__file__).parent.parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+    
+    # Проверяем наличие требуемых переменных
+    required_vars = ['TELEGRAM_BOT_TOKEN']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        print(f"Error: Missing required environment variables: {', '.join(missing_vars)}")
+        sys.exit(1)
 
 def main() -> None:
     """Основная функция для запуска бота"""
-    # Получаем токен из переменной окружения или аргументов командной строки
-    token = os.getenv('TELEGRAM_BOT_TOKEN')
+# Загружаем переменные окружения
+    load_environment()
     
-    if not token and len(sys.argv) > 1:
-        token = sys.argv[1]
+    # Настройка логирования
+    log_level = os.getenv('LOG_LEVEL', 'INFO')
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=getattr(logging, log_level)
+    )
     
-    if not token:
-        logger.error("Токен бота не найден. Установите переменную окружения TELEGRAM_BOT_TOKEN "
-                    "или передайте токен первым аргументом командной строки.")
-        sys.exit(1)
-
+    logger = logging.getLogger(__name__)
+    
     try:
+        # Получаем токен
+        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        
+        # Определяем путь к базе данных
+        env = os.getenv('ENVIRONMENT', 'development')
+        data_dir = Path.home() / 'telegram-signature-bot' / 'data'
+        data_dir.mkdir(parents=True, exist_ok=True)
+        db_path = str(data_dir / f'{env}.db')
+        
         # Инициализируем и запускаем бота
-        bot = SignatureBot(token)
-        logger.info("Бот запущен")
+        bot = SignatureBot(token, db_path)
+        logger.info(f"Бот запущен с базой данных {db_path}")
         bot.run()
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {str(e)}")
