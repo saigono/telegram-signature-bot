@@ -30,8 +30,16 @@ class SignatureBot:
         self.application.add_handler(CommandHandler("set_channel", self.set_channel))
         self.application.add_handler(CommandHandler("remove_channel", self.remove_channel))
         self.application.add_handler(CommandHandler("show_channel", self.show_channel))
+
+        # Обработчики сообщений
         self.application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
+        )
+        # Добавляем обработчики медиафайлов
+        self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_media))
+        self.application.add_handler(MessageHandler(filters.VIDEO, self.handle_media))
+        self.application.add_handler(
+            MessageHandler(filters.AUDIO | filters.VOICE, self.handle_media)
         )
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -44,7 +52,8 @@ class SignatureBot:
             "/show_signature - показать текущую подпись\n"
             "/set_channel @channel_name - установить канал для публикации\n"
             "/remove_channel - удалить канал\n"
-            "/show_channel - показать текущий канал"
+            "/show_channel - показать текущий канал\n\n"
+            "Поддерживаются текстовые сообщения, фото, видео, аудио и голосовые сообщения."
         )
 
     def extract_signature_entities(
@@ -174,6 +183,102 @@ class SignatureBot:
                         f"Проверьте права бота и существование канала.\n"
                         f"Ошибка: {str(e)}"
                     )
+
+    async def handle_media(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обработка медиафайлов (фото, видео, аудио, голосовые сообщения)"""
+        if not update.message:
+            return
+
+        user_id = update.effective_user.id
+        signature, signature_entities = self.db.get_signature(user_id)
+        channel = self.db.get_channel(user_id)
+
+        # Получаем caption медиафайла и его форматирование
+        caption = update.message.caption or ""
+        caption_entities = list(update.message.caption_entities or [])
+
+        if signature:
+            # Добавляем подпись к caption
+            caption_with_signature = f"{caption}\n\n{signature}" if caption else signature
+
+            # Объединяем entities из caption и подписи
+            combined_entities = list(caption_entities)
+            if signature_entities:
+                for e in signature_entities:
+                    new_offset = e["offset"] + len(caption) + (2 if caption else 0)
+                    entity = MessageEntity(
+                        type=e["type"], offset=new_offset, length=e["length"], url=e.get("url")
+                    )
+                    combined_entities.append(entity)
+
+            try:
+                # Определяем тип медиафайла и отправляем копию
+                if update.message.photo:
+                    photo = update.message.photo[-1]  # Берем самое качественное фото
+                    await update.message.reply_photo(
+                        photo.file_id,
+                        caption=caption_with_signature,
+                        caption_entities=combined_entities,
+                    )
+                    if channel:
+                        await context.bot.send_photo(
+                            channel,
+                            photo.file_id,
+                            caption=caption_with_signature,
+                            caption_entities=combined_entities,
+                        )
+
+                elif update.message.video:
+                    video = update.message.video
+                    await update.message.reply_video(
+                        video.file_id,
+                        caption=caption_with_signature,
+                        caption_entities=combined_entities,
+                    )
+                    if channel:
+                        await context.bot.send_video(
+                            channel,
+                            video.file_id,
+                            caption=caption_with_signature,
+                            caption_entities=combined_entities,
+                        )
+
+                elif update.message.audio:
+                    audio = update.message.audio
+                    await update.message.reply_audio(
+                        audio.file_id,
+                        caption=caption_with_signature,
+                        caption_entities=combined_entities,
+                    )
+                    if channel:
+                        await context.bot.send_audio(
+                            channel,
+                            audio.file_id,
+                            caption=caption_with_signature,
+                            caption_entities=combined_entities,
+                        )
+
+                elif update.message.voice:
+                    voice = update.message.voice
+                    await update.message.reply_voice(
+                        voice.file_id,
+                        caption=caption_with_signature,
+                        caption_entities=combined_entities,
+                    )
+                    if channel:
+                        await context.bot.send_voice(
+                            channel,
+                            voice.file_id,
+                            caption=caption_with_signature,
+                            caption_entities=combined_entities,
+                        )
+
+            except TelegramError as e:
+                error_msg = f"Ошибка при отправке медиафайла: {str(e)}"
+                if channel:
+                    error_msg += f"\nПроверьте права бота в канале {channel}"
+                logger.error(error_msg)
+                await update.message.reply_text(error_msg)
 
     async def remove_signature(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Удаление подписи пользователя"""
